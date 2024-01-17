@@ -1,0 +1,14 @@
+conditioning:
+  method: ps
+  params:
+    scale: 0.6
+    maxrepeat: 1
+
+data:
+  name: ffhq
+  root: data/ffhq_samples
+
+measurement:
+  operator:
+    name: elic
+    q: 1
