@@ -17,6 +17,7 @@ from guided_diffusion.gaussian_diffusion import create_sampler
 from data.dataloader import get_dataset, get_dataloader
 from util.img_utils import clear_color
 from util.logger import get_logger
+from torchvision.utils import save_image
 
 def load_yaml(file_path: str) -> dict:
     with open(file_path) as f:
@@ -30,6 +31,8 @@ def main():
     parser.add_argument('--task_config', type=str)
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--save_dir', type=str, default='./results')
+    parser.add_argument('--guidance_scale', type=float, default=0.1)
+    parser.add_argument('--interval', type=int, default=1)
     args = parser.parse_args()
    
     # logger
@@ -56,7 +59,7 @@ def main():
     logger.info(f"Operation: {measure_config['operator']['name']}")
 
     # Working directory
-    out_path = os.path.join(args.save_dir, measure_config['operator']['name'])
+    out_path = os.path.join(args.save_dir, measure_config['operator']['name'], task_config['conditioning']['method'])
     os.makedirs(out_path, exist_ok=True)
     for img_dir in ['label', 'mse_recon', 'progress', 'per_recon', 're_recon']:
         os.makedirs(os.path.join(out_path, img_dir), exist_ok=True)
@@ -97,11 +100,12 @@ def main():
             sample, dist = sample_fn(x_start=x_start, measurement=y_n, record=True, save_root=out_path)
             repeat += 1
             cur_scale *= 1.5
-
-        plt.imsave(os.path.join(out_path, 'label', fname), clear_color(ref_img))
-        plt.imsave(os.path.join(out_path, 'mse_recon', fname), clear_color(y_n))
-        plt.imsave(os.path.join(out_path, 'per_recon', fname), clear_color(sample))
-        plt.imsave(os.path.join(out_path, 're_recon', fname), clear_color(operator.forward(sample)))
+        
+        save_image(ref_img, os.path.join(out_path, 'label', fname), nrow=1, normalize=True, value_range=(-1, 1))
+        save_image(y_n, os.path.join(out_path, 'mse_recon', fname), nrow=1, normalize=True, value_range=(-1, 1))
+        save_image(sample, os.path.join(out_path, 'per_recon', fname), nrow=1, normalize=True, value_range=(-1, 1))
+        save_image(operator.forward(sample), os.path.join(out_path, 're_recon', fname), nrow=1, normalize=True, value_range=(-1, 1))
+        
         y_n = (y_n + 1.0) / 2.0
         ref_img = (ref_img + 1.0) / 2.0
         sample = (sample + 1.0) / 2.0

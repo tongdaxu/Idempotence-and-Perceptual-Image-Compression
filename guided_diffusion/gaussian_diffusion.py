@@ -36,21 +36,33 @@ def create_sampler(sampler,
                    dynamic_threshold,
                    clip_denoised,
                    rescale_timesteps,
-                   timestep_respacing=""):
+                   timestep_respacing="",
+                   eta=1):
     
+    sampler_name = sampler
     sampler = get_sampler(name=sampler)
     
     betas = get_named_beta_schedule(noise_schedule, steps)
     if not timestep_respacing:
         timestep_respacing = [steps]
-         
-    return sampler(use_timesteps=space_timesteps(steps, timestep_respacing),
-                   betas=betas,
-                   model_mean_type=model_mean_type,
-                   model_var_type=model_var_type,
-                   dynamic_threshold=dynamic_threshold,
-                   clip_denoised=clip_denoised, 
-                   rescale_timesteps=rescale_timesteps)
+    
+    if sampler_name == 'ddpm':
+        return sampler(use_timesteps=space_timesteps(steps, timestep_respacing),
+                    betas=betas,
+                    model_mean_type=model_mean_type,
+                    model_var_type=model_var_type,
+                    dynamic_threshold=dynamic_threshold,
+                    clip_denoised=clip_denoised, 
+                    rescale_timesteps=rescale_timesteps)
+    else:
+        return sampler(use_timesteps=space_timesteps(steps, timestep_respacing),
+                    betas=betas,
+                    model_mean_type=model_mean_type,
+                    model_var_type=model_var_type,
+                    dynamic_threshold=dynamic_threshold,
+                    clip_denoised=clip_denoised, 
+                    rescale_timesteps=rescale_timesteps,
+                    eta=eta)
 
 
 class GaussianDiffusion:
@@ -195,7 +207,10 @@ class GaussianDiffusion:
                                       measurement=measurement,
                                       noisy_measurement=noisy_measurement,
                                       x_prev=img,
-                                      x_0_hat=out['pred_xstart'])
+                                      idx=idx,
+                                      x_0_hat=out['pred_xstart'],
+                                      sigma_t=out['sigma_t'],
+                                      x_t_mean=out['mean'])
             img = img.detach_()
            
             pbar.set_postfix({'distance': distance.item()}, refresh=False)
@@ -364,17 +379,25 @@ class _WrappedModel:
 class DDPM(SpacedDiffusion):
     def p_sample(self, model, x, t):
         out = self.p_mean_variance(model, x, t)
-        sample = out['mean']
-
+        sample_mean = out['mean']
+        sample_std = torch.exp(0.5 * out['log_variance'])
         noise = torch.randn_like(x)
+        
         if t != 0:  # no noise when t == 0
-            sample += torch.exp(0.5 * out['log_variance']) * noise
+            sample = sample_mean + torch.exp(0.5 * out['log_variance']) * noise
+        else:
+            sample = sample_mean
 
-        return {'sample': sample, 'pred_xstart': out['pred_xstart']}
+        return {'sample': sample, 'pred_xstart': out['pred_xstart'], "sigma_t": sample_std, 'mean':sample_mean}
     
 
 @register_sampler(name='ddim')
 class DDIM(SpacedDiffusion):
+    def __init__(self, eta=None, **kwargs):
+        self.eta = eta
+        print(f'eta:{eta}')
+        super().__init__(**kwargs)
+    
     def p_sample(self, model, x, t, eta=0.0):
         out = self.p_mean_variance(model, x, t)
         
@@ -382,6 +405,7 @@ class DDIM(SpacedDiffusion):
         
         alpha_bar = extract_and_expand(self.alphas_cumprod, t, x)
         alpha_bar_prev = extract_and_expand(self.alphas_cumprod_prev, t, x)
+        eta = eta if self.eta is None else self.eta
         sigma = (
             eta
             * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
@@ -394,11 +418,13 @@ class DDIM(SpacedDiffusion):
             + torch.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
         )
 
-        sample = mean_pred
+        sample_mean = mean_pred
         if t != 0:
-            sample += sigma * noise
+            sample =  sample_mean + sigma * noise
+        else:
+            sample = sample_mean
         
-        return {"sample": sample, "pred_xstart": out["pred_xstart"]}
+        return {"sample": sample, "pred_xstart": out["pred_xstart"], "mean": sample_mean, "sigma_t": sigma}
 
     def predict_eps_from_x_start(self, x_t, t, pred_xstart):
         coef1 = extract_and_expand(self.sqrt_recip_alphas_cumprod, t, x_t)

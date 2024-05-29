@@ -1,0 +1,15 @@
+conditioning:
+  method: DSG
+  params:
+    scale: 0.3
+    maxrepeat: 1
+    interval: 1
+
+data:
+  name: ffhq
+  root: data/imagenet_samples
+
+measurement:
+  operator:
+    name: elic
+    q: 1
