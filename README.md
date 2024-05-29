@@ -79,6 +79,11 @@ python -u run_codec.py --model_config=configs/ffhq_model_config.yaml --diffusion
 python -u run_codec.py --model_config=configs/imagenet_model_config.yaml --diffusion_config=configs/diffusion_config.yaml \
 --task_config=configs/hyper_config.yaml --save_dir=results
 ```
+* To run a codec with DDIM trained on Imagenet and ELIC base codec by DSG method
+```bash
+python -u run_codec.py --model_config=configs/imagenet_model_config.yaml --diffusion_config=configs/diffusion_ddim200_config.yaml \ --task_config=configs/elic_dsg_config.yaml --save_dir=results
+```
+
 * The dataset root and bitrate is in task_config.yaml.
 * Evaluation:
     * to evaluate bpp, run the base codec test code:
